@@ -40,8 +40,22 @@ def recursiveCopyInto(gauth, fID_from, fID_to, maxdepth=float('infinity'), __cur
                     print '  ' * (__currentDepth+1) + 'Trying to create folder "%s"' % child['title']
                     new_folder = gauth.service.files().insert(body=data_new_folder).execute()
                     print '  ' * (__currentDepth+1) + 'Created folder "%s" (id: %s) in "%s" (id: %s)' % (new_folder['title'], new_folder['id'], child['title'], child['id'])
+                    processed = True
                 else:
                     new_folder = exists_check['items'][0]
+                    processed = False
+
+                # Report step for folder
+                data.append({
+                    'Type' : "folder",
+                    'Name' : child['title'],
+                    'Old_ID' : child['id'],
+                    'Old_Parent_ID' : fID_from,
+                    'New_ID' : new_folder['id'],
+                    'New_Parent_ID' : fID_to,
+                    'Processed' : processed
+                })
+                
                 recursiveCopyInto(gauth, child['id'], new_folder['id'], maxdepth=maxdepth, __currentDepth=__currentDepth+1)
 
             else:
@@ -58,12 +72,29 @@ def recursiveCopyInto(gauth, fID_from, fID_to, maxdepth=float('infinity'), __cur
                     try:
                         new_file = gauth.service.files().copy(fileId=child['id'], body=copied_file).execute()
                         print '  ' * (__currentDepth+1) + 'Copied file "%s"' % new_file['title']
+                        processed = True
                     except googleapiclient.errors.HttpError as e:
                         print 'Failed: %s\n trying again' % e
                         new_file = gauth.service.files().copy(fileId=child['id'], body=copied_file).execute()
                 else:
                     print 'file "%s" already exists in destination folder "%s"' % (child['title'], fID_to)
+                    processed = False
 
+                # Report step for files
+                row = {
+                    'Type' : "file",
+                    'Name' : child['title'],
+                    'Old_ID' : child['id'],
+                    'Old_Parent_ID' : fID_from,
+                    'New_ID' : "",
+                    'New_Parent_ID' : fID_to,
+                    'Processed' : processed
+                }
+                
+                if processed:
+                    row['New_ID'] = new_file['id']
+
+                data.append(row)
 
         # Get page
         page_token = result.get('nextPageToken')
@@ -72,6 +103,9 @@ def recursiveCopyInto(gauth, fID_from, fID_to, maxdepth=float('infinity'), __cur
 
 if __name__ == '__main__':
     import argparse
+
+    # csv report module
+    from report import *
 
     parser = argparse.ArgumentParser(description='Recursively copies the contents of a Google Drive folder to another Google Drive folder')
     parser.add_argument('to_folder_id', metavar='FROM_FOLDER_ID', help='an integer for the accumulator')
@@ -88,6 +122,9 @@ if __name__ == '__main__':
 
     # Copy folder
     recursiveCopyInto(gauth, args.to_folder_id, args.from_folder_id) #, maxdepth=0)
+
+    # Save report
+    createReport(data)
 
 
 # permission_list = gauth.service.permissions().list(fileId=file1['id']).execute()
